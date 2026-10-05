@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hall Pass</title>
+<style>
+:root{--bg:#f6f7fb;--fg:#1d2433;--card:#fff;--ac:#2f6fed;--ok:#1f9d55;--bad:#d64545;--mut:#6b7385;--ln:#e1e5ee}
+@media(prefers-color-scheme:dark){:root{--bg:#141821;--fg:#eef1f7;--card:#1e2430;--ln:#2d3545;--mut:#9aa3b5}}
+*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:900px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 4px}.mut{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;margin:12px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button,select{font:inherit;border:1px solid var(--ln);background:var(--card);color:var(--fg);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}button:disabled{opacity:.5;cursor:default}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.big{width:100%;padding:18px;font-size:20px;font-weight:600}.go{background:var(--ok);color:#fff;border-color:var(--ok)}
+.stat{font-size:20px;font-weight:600;margin:6px 0}ol{margin:6px 0;padding-left:24px}li{padding:3px 0}.x{padding:2px 8px;margin-left:6px}
+</style></head><body><main id="app"></main>
+<script>
+// ===== SETTINGS =====
+const DB="PASTE_YOUR_FIREBASE_DATABASE_URL_HERE"; // e.g. https://my-hallpass-default-rtdb.firebaseio.com (no trailing slash)
+const PIN="1234"; // teacher PIN for  your-page-url#teacher
+const BUFFER=10;  // minutes blocked at the start and end of each class segment
+// ===== DATA =====
+const ROST={"1A":["Nataly A.","Vanessa A.","Kavin B.","Jai B.","Tiffany B.","Bradford C.","Fabian E.","Natalie F.","Zeeshan F.","Adrian G.","Alayna H.","Tallyn H.","Linkyn K.","Tanvi L.","Giana L.","Megh P.","Lenin P.","Samson P.","Advita R.","Victoria S.","Christopher S.","Krish S.","Daksha S.","Annie T.","Sharon V.","Brynn W.","Mason X.","Nina Z.","Grace Z."],"2A":["Fabian A.","Nicole B.","Eli C.","Emma C.","Lucas C.","Maddie D.","Beckett F.","Maria F.","Andrew G.","Ethan G.","Sophia J.","Miller J.","Sai K.","Ju Yeon K.","Saharsh K.","Jordan L.","Ava L.","Cameron L.","Vivienne M.","Jemma M.","Carver O.","Charlotte P.","Conor R.","Penelope S.","Anay S.","Amina S.","Johan S.","Olivia S.","Atharva S.","Audrey S.","Peyton T.","Jaylon Z."],"2B":["Simon A.","Medhini A.","Max B.","Sujal B.","Cicely B.","Aryan D.","Svana D.","Kaiya D.","Mathias F.","Aahana G.","Daniel G.","Jacqueline G.","Ashmi H.","Chandan H.","Camryn H.","Sydney L.","Isabella L.","Roscoe L.","Michael L.","Leah L.","Varika M.","Silas M.","Caroline M.","Kyla M.","Blake M.","Jalen M.","Phanuel N.","Hasti P.","Emma P.","Rahul R.","Fletcher R.","Hunter R.","Matthew W.","Campbell W."],"3B":["Jad A.","Nataliya A.","Sahasra A.","Diana A.","Zion C.","Natanya C.","Devin D.","Tate F.","Rylen F.","Evan G.","Aleese-Nichole H.","Anvita H.","Valbona H.","Renn H.","Xavier J.","Leo K.","Avika K.","Akshant K.","Riva L.","Hansika M.","Evan M.","Sophia N.","Declan O.","Cielo P.","Mukesh R.","Lincoln R.","Claire R.","Delaney S.","Roshan S.","Tejas S.","Niyanthri V.","Aditi V."],"4":["Destiny B.","Valentino D.","Gracie / Elizabeth D.","Daniel G.","Theo / Theodore H.","Dario H.","Aubrey J.","Brody J.","Patrick M.","Celeste M.","Zoie N.","Paula N.","Uchechi N.","Yaduraj P.","Jackson P.","Asha R.","Crystal S.","Isaiah T.","Davien T.","Ellis W."]};
+const CL={"1A":{b:1,d:"A",l:"AP Stats 1A"},"2A":{b:2,d:"A",l:"AP Stats 2A"},"2B":{b:2,d:"B",l:"AP Stats 2B"},"3B":{b:3,d:"B",l:"AP Stats 3B"},"4":{b:4,d:"*",l:"Math 1 Honors (4th)"}};
+const SN={R:"Regular",N:"No Homeroom",E:"Early Release"};
+const S={R:{1:[["7:15","8:40"]],2:[["8:46","10:09"]],3:[["10:51","11:21"],["11:46","12:46"]],4:[["12:52","14:15"]]},
+N:{1:[["7:15","8:49"]],2:[["8:55","10:29"]],3:[["10:35","11:07"],["11:32","12:37"]],4:[["12:43","14:15"]]},
+E:{1:[["7:15","8:09"]],2:[["8:15","9:09"]],3:[["9:15","10:09"]],4:[["10:15","11:10"]]}};
+const OFF="2026-09-07 2026-09-21 2026-10-02 2026-11-02 2026-11-03 2026-11-11 2026-11-25 2026-11-26 2026-11-27 2026-12-21 2026-12-22 2026-12-23 2026-12-24 2026-12-25 2026-12-28 2026-12-29 2026-12-30 2026-12-31 2027-01-01 2027-01-18 2027-01-22 2027-02-15 2027-03-25 2027-03-26 2027-03-29 2027-03-30 2027-03-31 2027-04-01 2027-04-02 2027-05-31 2027-06-10 2027-06-11".split(" ");
+const ERD=["2026-10-14","2026-12-09","2027-02-24","2027-04-28"];
+// ===== LOGIC =====
+const qs=new URLSearchParams(typeof location!="undefined"?location.search:"");
+const skew=qs.get("test")?new Date(qs.get("test"))-new Date():0; // ?test=2026-10-05T09:30 to preview
+const now=()=>new Date(Date.now()+skew);
+const p2=n=>String(n).padStart(2,"0"),key=d=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+const T=s=>{const[h,m]=s.split(":");return +h*60+ +m},fmt=m=>{const h=Math.floor(m/60);return (h>12?h-12:h)+":"+p2(Math.round(m%60))};
+function ab(d){const k=key(d),w=d.getDay();if(w==0||w==6||OFF.includes(k)||k<"2026-08-25"||k>"2027-06-09")return null;
+ let c=0,x=new Date(2026,7,25);while(key(x)<k){x.setDate(x.getDate()+1);if(x.getDay()%6&&!OFF.includes(key(x)))c++}return c%2?"B":"A"}
+function bell(d,cfg){const k=key(d);if(cfg&&cfg.sched)return cfg.sched;if(ERD.includes(k))return"E";
+ const n=Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-Date.UTC(2026,9,5))/864e5);return n>=0&&Math.floor(n/7)%3==0?"N":"R"}
+function ctx(cfg){const d=now();return{d,dk:key(d),a:ab(d),st:bell(d,cfg),nm:d.getHours()*60+d.getMinutes()+d.getSeconds()/60}}
+const meets=(c,a)=>a&&(CL[c].d=="*"||CL[c].d==a),segs=(c,x)=>S[x.st][CL[c].b].map(p=>p.map(T));
+const inSess=(c,x)=>meets(c,x.a)&&segs(c,x).some(([s,e])=>x.nm>=s&&x.nm<=e);
+function win(c,x){if(!meets(c,x.a))return{ok:0,t:"No class today"};
+ for(const[s,e]of segs(c,x))if(x.nm>=s&&x.nm<=e){if(x.nm<s+BUFFER)return{ok:0,t:"Passes open at "+fmt(s+BUFFER)};
+  if(x.nm>e-BUFFER)return{ok:0,t:"Passes are closed for the last "+BUFFER+" minutes"};return{ok:1,t:"Passes open until "+fmt(e-BUFFER)}}
+ return{ok:0,t:"Class is not in session right now"}}
+//--UI--
+let me=JSON.parse(localStorage.getItem("hp_me")||"null"),sel=null,data={},teacher=false,sig="",busy=0;
+const $=s=>document.querySelector(s),el=(t,p={},...k)=>{const e=document.createElement(t);Object.assign(e,p);k.flat().forEach(c=>e.append(c));return e};
+const card=(...k)=>el("div",{className:"card"},...k),api=(p,m="GET",b)=>fetch(DB+p+".json",{method:m,body:b===undefined?undefined:JSON.stringify(b)}).then(r=>r.json());
+const list=c=>Object.entries((data.q||{})[c]||{}).sort((a,b)=>a[0]<b[0]?-1:1).map(([k,v])=>({k,...v}));
+const mins=t=>Math.max(0,Math.round((Date.now()-t)/6e4));
+async function poll(){if(DB.includes("PASTE")||busy)return render();try{data=(await api("/live/"+key(now())))||{}}catch(e){data={err:1}}render()}
+async function act(f){busy=1;try{await f()}catch(e){alert("Network problem - try again")}busy=0;poll()}
+const join=c=>act(async()=>{const dk=key(now()),f=(await api(`/live/${dk}/q/${c}`))||{};if(!Object.values(f).some(v=>v.n==me.n))await api(`/live/${dk}/q/${c}`,"POST",{n:me.n,t:Date.now()})});
+const leave=(c,e,active)=>act(async()=>{const dk=key(now());await api(`/live/${dk}/q/${c}/${e.k}`,"DELETE");
+ if(active){const t=Date.now();await api(`/live/${dk}/last/${c}`,"PUT",t);await api(`/log/${dk}`,"POST",{c,n:e.n,s:Math.max(e.t,(data.last||{})[c]||0),e:t})}});
+const setCfg=o=>act(()=>api(`/live/${key(now())}/cfg`,"PATCH",o));
+async function csv(){const L=(await api("/log"))||{},f=t=>new Date(t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}),r=["date,class,student,left,returned,minutes"];
+ for(const d in L)for(const k in L[d]){const v=L[d][k];r.push([d,v.c,`"${v.n}"`,f(v.s),f(v.e),((v.e-v.s)/6e4).toFixed(1)].join(","))}
+ el("a",{href:URL.createObjectURL(new Blob([r.join("\n")],{type:"text/csv"})),download:"hall-pass-log.csv"}).click()}
+function render(){const cfg=data.cfg||{},x=ctx(cfg),s=JSON.stringify([data,me,sel,teacher,Math.floor(x.nm)]);if(s==sig)return;sig=s;
+ const app=$("#app");app.replaceChildren(el("h1",{},"🚻 Hall Pass"),el("div",{className:"mut"},x.d.toLocaleDateString([],{weekday:"long",month:"long",day:"numeric"})+(x.a?` · ${x.a}-Day · ${SN[x.st]} schedule`:" · No school today")));
+ if(DB.includes("PASTE"))return app.append(card("Setup needed: paste your Firebase database URL into index.html."));
+ if(data.err)app.append(card("Can't reach the server. Check your connection."));
+ const cs=Object.keys(CL).filter(c=>meets(c,x.a));if(!cs.length)return app.append(card("No classes today."));
+ if(me&&(!cs.includes(me.c)||me.dk!=x.dk)){me=null;localStorage.removeItem("hp_me")}
+ if(me&&!teacher)sel=me.c;else if(!sel||!cs.includes(sel))sel=cs.find(c=>inSess(c,x))||cs[0];
+ if(!me||teacher)app.append(el("div",{className:"row"},cs.map(c=>el("button",{className:c==sel?"on":"",textContent:CL[c].l,onclick:()=>{sel=c;render()}}))));
+ const c=sel,w=win(c,x),L=list(c),lim=cfg.limit||1,last=(data.last||{})[c]||0,out=L.slice(0,lim),wait=L.slice(lim);
+ const fmtOut=e=>`${e.n} (${mins(Math.max(e.t,last))} min)`;
+ const lines=card(el("div",{className:"stat"},out.length?"Out now: ":"Hall is clear ✅"),out.map(e=>el("div",{},fmtOut(e),teacher?el("button",{className:"x",textContent:"✓ back",onclick:()=>leave(c,e,1)}):"")),
+  wait.length?[el("div",{className:"mut"},"In line:"),el("ol",{},wait.map(e=>el("li",{},e.n,teacher?el("button",{className:"x",textContent:"✕",onclick:()=>leave(c,e,0)}):"")))]:"");
+ if(teacher){app.append(card(el("div",{className:"row"},el("button",{className:cfg.paused?"on":"",textContent:cfg.paused?"▶ Resume passes":"⏸ Pause passes",onclick:()=>setCfg({paused:!cfg.paused})}),
+  el("label",{},"Out at once: ",Object.assign(el("select",{onchange:e=>setCfg({limit:+e.target.value})},[1,2,3].map(n=>el("option",{value:n,textContent:n,selected:n==lim}))))),
+  el("label",{},"Schedule today: ",el("select",{onchange:e=>setCfg({sched:e.target.value})},[["","Auto"],["R","Regular"],["N","No Homeroom"],["E","Early Release"]].map(([v,t])=>el("option",{value:v,textContent:t,selected:v==(cfg.sched||"")})))),
+  el("button",{textContent:"Download log (CSV)",onclick:csv}),el("button",{textContent:"Student view",onclick:()=>{teacher=false;location.hash="";render()}})),
+  el("div",{className:"mut",style:"margin-top:8px"},CL[c].l+": "+w.t+(cfg.paused?" · PAUSED":""))),lines);return}
+ if(!me){app.append(card(el("div",{className:"stat"},"Tap your name"),el("div",{className:"grid"},ROST[c].map(n=>el("button",{textContent:n,onclick:()=>{me={c,n,dk:x.dk};localStorage.setItem("hp_me",JSON.stringify(me));render()}})))));return}
+ const i=L.findIndex(e=>e.n==me.n),mine=L[i];let box;
+ if(mine&&i<lim)box=[el("div",{className:"stat"},"You're out 🚶 — tap when you're back"),el("button",{className:"big go",textContent:"I'm back",onclick:()=>leave(c,mine,1)})];
+ else if(mine)box=[el("div",{className:"stat"},`You're #${i-lim+1} in line`),el("button",{className:"big",textContent:"Leave the line",onclick:()=>leave(c,mine,0)})];
+ else{const ok=w.ok&&!cfg.paused,full=L.length>=lim;box=[el("button",{className:"big"+(ok?" on":""),disabled:!ok,textContent:full?"Get in line":"Request to go",onclick:()=>join(c)}),el("div",{className:"mut",style:"margin-top:8px"},cfg.paused?"Passes are paused by your teacher right now":w.t)]}
+ app.append(card(el("div",{className:"row"},el("b",{},`${me.n} · ${CL[c].l}`),el("button",{textContent:"Not you?",onclick:()=>{me=null;localStorage.removeItem("hp_me");render()}}))),card(box),lines)}
+if(location.hash=="#teacher"&&(sessionStorage.getItem("hp_t")||prompt("Teacher PIN")==PIN)){teacher=true;sessionStorage.setItem("hp_t",1)}
+poll();setInterval(()=>{if(!document.hidden)poll()},4000);
+</script></body></html>
