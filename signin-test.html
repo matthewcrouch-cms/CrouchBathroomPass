@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Google Sign-in Test</title>
+<style>
+body{margin:0;font:16px system-ui,sans-serif;background:#eef5fb;color:#10202e}
+main{max-width:640px;margin:auto;padding:20px}
+h1{font-size:22px;margin:0 0 12px}
+.card{background:#fff;border:1px solid #d3e2ef;border-radius:12px;padding:14px;margin:12px 0}
+button{font:inherit;font-weight:600;padding:14px 18px;border-radius:10px;border:0;background:#4B9CD3;color:#10202e;cursor:pointer;width:100%}
+button.sec{background:#fff;border:1px solid #d3e2ef;margin-top:8px;font-weight:400}
+li{margin:6px 0}.big{font-size:20px;font-weight:700}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+</head><body><main>
+<h1>Google Sign-in Test</h1>
+<div class="card"><ol id="steps"></ol></div>
+<div class="card"><button id="go">Sign in with Google</button><button id="out" class="sec" hidden>Sign out</button></div>
+<div class="card big" id="result">Result will appear here.</div>
+<script>
+// Paste the values from Firebase: Project settings > Your apps > (web app) > firebaseConfig
+const FIREBASE_CONFIG={apiKey:"AIzaSyDkospHpohz7vCNbD2U43JG8tX92vl6pBE",authDomain:"bathroom-pass-e2aa6.firebaseapp.com",projectId:"bathroom-pass-e2aa6",appId:"1:227301587812:web:e4bce5d9194ef5c2ca1871"};
+const $=s=>document.querySelector(s),log=t=>{const li=document.createElement("li");li.textContent=t;$("#steps").append(li)},res=t=>$("#result").textContent=t;
+log("✅ Page loaded");
+const ok=typeof firebase!=="undefined";
+log(ok?"✅ Firebase loaded":"❌ Firebase files were blocked. The network may block gstatic.com.");
+const setup=Object.values(FIREBASE_CONFIG).some(v=>String(v).startsWith("PASTE"));
+if(setup)log("⚠️ Firebase settings not pasted into this file yet");
+if(ok&&!setup){firebase.initializeApp(FIREBASE_CONFIG);log("✅ Firebase started")}
+const WHY={"auth/popup-blocked":"The browser blocked the sign-in pop-up. Allow pop-ups for this site and try again.","auth/popup-closed-by-user":"The sign-in window closed before finishing. If Google showed a message about the app being blocked or needing admin approval, that is the school restriction.","auth/cancelled-popup-request":"Another sign-in window was already open. Try again.","auth/unauthorized-domain":"Add this site's domain in Firebase: Authentication > Settings > Authorized domains.","auth/operation-not-allowed":"Google sign-in is not turned on yet in Firebase (Authentication > Sign-in method).","auth/network-request-failed":"A network request was blocked. The school web filter may be blocking Google sign-in."};
+$("#go").onclick=async()=>{
+ if(!ok||setup)return res("Finish setup first (see steps above).");
+ res("Waiting for sign-in…");
+ try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:"select_account"});
+  const r=await firebase.auth().signInWithPopup(p),e=r.user.email||"(no email)";
+  log("✅ Signed in as "+e);res("✅ SIGN-IN WORKS: "+e+" (domain: "+e.split("@")[1]+")");$("#out").hidden=false}
+ catch(err){log("❌ "+err.code);res("❌ NOT WORKING: "+(WHY[err.code]||err.code+" - "+err.message))}};
+$("#out").onclick=async()=>{await firebase.auth().signOut();$("#out").hidden=true;res("Signed out.")};
+</script></main></body></html>
