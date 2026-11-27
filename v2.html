@@ -12,7 +12,7 @@ button.on{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weig
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .big{width:100%;padding:18px;font-size:20px;font-weight:600}.go{background:var(--or);color:#10202e;border-color:var(--or)}
 #app>.mut:first-child{margin:2px 0 12px}table{width:100%;border-collapse:collapse}th,td{padding:7px 8px;border-bottom:1px solid var(--ln);text-align:left;white-space:nowrap}th{font-size:13px;color:var(--mut)}footer{text-align:center;padding:18px}footer a{color:var(--mut);font-size:13px}header{background:var(--hd);border-bottom:5px solid var(--or);padding:10px 16px}header div{max-width:900px;margin:auto;display:flex;align-items:center;gap:14px}header img{height:64px;width:auto}header b{display:block;font-size:20px;color:#fff}header span{color:#fff;opacity:.9}.card{box-shadow:0 1px 3px rgba(16,32,46,.08)}
-.stat{font-size:20px;font-weight:600;margin:6px 0}ol{margin:6px 0;padding-left:24px}li{padding:3px 0}.x{padding:2px 8px;margin-left:6px}
+.stat{font-size:20px;font-weight:600;margin:6px 0}.long{color:#c62828;font-weight:700}.card.remind{background:#F56600;color:#fff;border-color:#F56600;animation:pulse 1.2s ease-in-out infinite}.card.remind .big{background:#fff;color:#B34700}@keyframes pulse{50%{box-shadow:0 0 0 10px rgba(245,102,0,.25)}}ol{margin:6px 0;padding-left:24px}li{padding:3px 0}.x{padding:2px 8px;margin-left:6px}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:300px;margin:10px auto 0}.pad button{font-size:22px;padding:14px 0;font-weight:600}
 .dots{display:flex;gap:12px;justify-content:center;margin:12px 0}.dots span{width:16px;height:16px;border-radius:50%;border:2px solid var(--ac)}.dots span.on{background:var(--ac)}
 .bad{color:#b34700;font-weight:600;text-align:center}.inp{font:inherit;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--card);color:var(--fg)}
@@ -45,7 +45,7 @@ async function rpc(fn, args = {}) {
 const $ = s => document.querySelector(s);
 const el = (t, p = {}, ...k) => { const e = document.createElement(t); Object.assign(e, p); k.flat().forEach(c => c != null && c !== "" && e.append(c)); return e; };
 const card = (...k) => el("div", { className: "card" }, ...k);
-const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 6e4));
+const mins = t => Math.max(0, Math.round((Date.now() + (S.skew || 0) - new Date(t).getTime()) / 6e4));   // uses the server clock
 const fmtT = t => new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
 const nyDate = d => d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York" });
 const tokens = () => ({ p_aps: store.get(APS_KEY), p_hw: store.get(HW_KEY) });
@@ -63,6 +63,8 @@ async function poll() {
       S.st = (t.p_aps || t.p_hw) ? await rpc("bp_state", t) : { me: null };
       if (!S.st.me) S.pub = await rpc("bp_public");
     }
+    const sv = (S.mode === "teacher" ? S.ts && S.ts.now : (S.st && S.st.now) || (S.pub && S.pub.now));
+    if (sv) S.skew = new Date(sv).getTime() - Date.now();
     S.err = "";
   } catch (e) {
     if (S.mode === "teacher" && /password/i.test(e.message)) { S.tpw = null; sstore.del("bp_tpw"); S.err = e.message; }
@@ -82,7 +84,7 @@ function lineCard(st, teacher) {
   const q = st.queue || [], lim = st.out_limit || 1, early = st.window && st.window.early;
   const out = early ? [] : q.slice(0, lim), wait = early ? q : q.slice(lim);
   return card(el("div", { className: "stat" }, out.length ? "Out now: " : "Hall is clear ✅"),
-    out.map(e => el("div", {}, `${e.name} (${mins(e.since)} min)`,
+    out.map(e => el("div", { className: mins(e.since) >= (st.remind_min || S.remind || 7) ? "long" : "" }, `${e.name} (${mins(e.since)} min)`,
       teacher ? el("button", { className: "x", textContent: "✓ back", onclick: () => act(() => rpc("bp_teacher_remove", { p_password: S.tpw, p_queue: e.id, p_back: true })) }) : "")),
     wait.length ? [el("div", { className: "mut" }, "In line:"), el("ol", {}, wait.map(e => el("li", {}, e.name,
       teacher ? el("button", { className: "x", textContent: "✕", onclick: () => act(() => rpc("bp_teacher_remove", { p_password: S.tpw, p_queue: e.id, p_back: false })) }) : "")))] : "");
@@ -94,10 +96,16 @@ function notMe() {
   if (t.p_hw) rpc("hw_logout", { p_token: t.p_hw }).catch(() => {});
   store.del(APS_KEY); store.del(HW_KEY); S.st = null; S.login = null; S.sig = ""; poll();
 }
+// Flash the tab title while a student has been out too long (their screen is waiting when they come back)
+let flashT = null; const baseTitle = document.title;
+function flashTitle(on) {
+  if (on && !flashT) { let k = 0; flashT = setInterval(() => { document.title = (k++ % 2) ? baseTitle : "⏰ Tap I'm back!"; }, 1000); }
+  if (!on && flashT) { clearInterval(flashT); flashT = null; document.title = baseTitle; }
+}
 function studentView(app) {
   const st = S.st;
   if (!st) return app.append(card("Loading…"));
-  if (!st.me) return loginView(app);
+  if (!st.me) { flashTitle(false); return loginView(app); }
   const w = st.window || {}, q = st.queue || [], lim = st.out_limit || 1, early = !!w.early;
   const i = q.findIndex(e => e.mine), mine = q[i];
   app.append(card(el("div", { className: "row" }, el("b", {}, `${st.me.name} · ${st.label}`),
@@ -112,7 +120,12 @@ function studentView(app) {
       el("div", { className: "mut" }, `${u} of ${st.cap} used · resets Monday`)));
   }
   let box;
-  if (mine && i < lim && !early) box = [el("div", { className: "stat" }, "You're out 🚶 — tap when you're back"),
+  const overdue = mine && i < lim && !early && mins(mine.since) >= (st.remind_min || 7);
+  flashTitle(overdue);
+  if (overdue) box = [el("div", { className: "stat" }, "⏰ Are you back?"),
+    el("div", { style: "margin:4px 0 12px;font-size:17px" }, `You've been out for ${mins(mine.since)} minutes. If you're back in class, tap I'm back.`),
+    el("button", { className: "big go", textContent: "I'm back", onclick: () => act(() => rpc("bp_leave", tokens())) })];
+  else if (mine && i < lim && !early) box = [el("div", { className: "stat" }, "You're out 🚶 — tap when you're back"),
     el("button", { className: "big go", textContent: "I'm back", onclick: () => act(() => rpc("bp_leave", tokens())) })];
   else if (mine) {
     const first = early && i < lim;
@@ -127,7 +140,8 @@ function studentView(app) {
       el("div", { className: "mut", style: "margin-top:8px" }, stop ? `You've used all ${st.cap} passes for this week. They reset on Monday.`
         : st.paused ? "Passes are paused by your teacher right now" : early ? `You can get in line now, but wait until ${w.t.replace("Passes open at ", "")} to leave.` : w.t)];
   }
-  app.append(card(...box), lineCard(st, false));
+  const bx = card(...box); if (overdue) bx.classList.add("remind");
+  app.append(bx, lineCard(st, false));
 }
 
 // Not logged in on this Chromebook: class in session → tap your name → homework PIN
@@ -176,7 +190,7 @@ function loginView(app) {
 function teacherLogin(app) {
   const inp = el("input", { id: "pw", type: "password", placeholder: "Homework teacher password", className: "inp" });
   const go = async () => {
-    try { S.ts = await rpc("bp_teacher_state", { p_password: inp.value }); inp.blur(); S.tpw = inp.value; sstore.set("bp_tpw", inp.value); S.err = ""; S.sig = ""; render(); }
+    try { S.ts = await rpc("bp_teacher_state", { p_password: inp.value }); S.skew = new Date(S.ts.now).getTime() - Date.now(); inp.blur(); S.tpw = inp.value; sstore.set("bp_tpw", inp.value); S.err = ""; S.sig = ""; render(); }
     catch (e) { inp.value = ""; inp.placeholder = "Wrong password"; }
   };
   inp.onkeydown = e => { if (e.key === "Enter") go(); };
@@ -204,7 +218,7 @@ function teacherView(app) {
       el("button", { textContent: "Log out", onclick: () => { S.tpw = null; S.ts = null; sstore.del("bp_tpw"); S.mode = "student"; history.replaceState(null, "", location.pathname); S.sig = ""; poll(); } })),
     c ? el("div", { className: "mut", style: "margin-top:8px" }, c.label + ": " + c.window.t + (T.paused ? " · PAUSED" : "")) : ""));
   if (!c) return;
-  app.append(lineCard(c, true));
+  app.append(lineCard(Object.assign({ remind_min: T.remind_min }, c), true));
   if (c.weekly) app.append(card(el("div", { className: "stat" }, `Weekly passes · limit ${c.weekly_limit} (resets Monday)`),
     el("div", { style: "overflow-x:auto" }, el("table", {}, [...c.weekly].sort((a, b) => b.used / b.cap - a.used / a.cap || a.name.localeCompare(b.name)).map(r =>
       el("tr", {}, el("td", { textContent: r.name }), el("td", { textContent: `${r.used} / ${r.cap}`, style: r.used >= r.cap ? "color:#b34700;font-weight:700" : "" }),
@@ -227,13 +241,13 @@ function reportView(app) {
   for (const s of D.roster) if (R0.cls === "all" || s.class === R0.cls) { const id = s.class + "|" + s.skey; rows[id] = rows[id] || { c: s.class, n: s.name, t: 0, m: 0, l: "" }; }
   const R = Object.values(rows).sort((a, b) => b.t - a.t || a.n.localeCompare(b.n)), tot = R.reduce((s, r) => s + r.t, 0);
   const sum = () => dl("hall-pass-summary.csv", ["student,class,trips,total_min,avg_min,last_trip"].concat(R.map(r => `"${r.n}",${r.c},${r.t},${r.m.toFixed(0)},${r.t ? (r.m / r.t).toFixed(1) : ""},${r.l}`)).join("\n"));
-  const all = () => dl("hall-pass-log.csv", ["date,class,student,left,returned,minutes"].concat(D.log.map(v =>
-    [v.day, v.class, `"${v.name}"`, fmtT(v.left), fmtT(v.back), ((new Date(v.back) - new Date(v.left)) / 6e4).toFixed(1)].join(","))).join("\n"));
+  const all = () => dl("hall-pass-log.csv", ["date,class,student,left,returned,minutes,auto_signed_in"].concat(D.log.map(v =>
+    [v.day, v.class, `"${v.name}"`, fmtT(v.left), fmtT(v.back), ((new Date(v.back) - new Date(v.left)) / 6e4).toFixed(1), v.auto ? "yes" : ""].join(","))).join("\n"));
   app.append(card(el("div", { className: "row" }, el("button", { textContent: "← Back", onclick: () => { S.view = "pass"; S.sig = ""; render(); } }),
       pick([["1", "Today"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["all", "All time"]], R0.range, v => { R0.range = v; S.sig = ""; render(); }),
       pick([["all", "All classes"]].concat(D.classes.map(c => [c.id, c.label])), R0.cls, v => { R0.cls = v; S.sig = ""; render(); }),
       el("button", { textContent: "Summary (CSV)", onclick: sum }), el("button", { textContent: "All trips (CSV)", onclick: all })),
-    el("div", { className: "mut", style: "margin-top:8px" }, `${tot} trips · ${R.length} students · avg ${(tot / Math.max(1, R.length)).toFixed(1)} per student`)),
+    el("div", { className: "mut", style: "margin-top:8px" }, `${tot} trips · ${R.length} students · avg ${(tot / Math.max(1, R.length)).toFixed(1)} per student` + (log.some(v => v.auto) ? ` · ${log.filter(v => v.auto).length} signed back in automatically at the end of class` : ""))),
     card(el("div", { style: "overflow-x:auto" }, el("table", {}, el("tr", {}, ["Student", "Class", "Trips", "Total min", "Avg min", "Last trip"].map(h => el("th", { textContent: h }))),
       R.map(r => el("tr", {}, [r.n, lab[r.c] || r.c, r.t, r.m.toFixed(0), r.t ? (r.m / r.t).toFixed(1) : "–", r.l || "–"].map(v => el("td", { textContent: "" + v }))))))));
 }
