@@ -152,7 +152,7 @@ function loginView(app) {
     if (!now.length) {
       const nx = pub.classes.filter(c => c.window.next != null).sort((a, b) => a.window.next - b.window.next)[0];
       return app.append(card(el("div", { className: "stat" }, "No class in session right now"),
-        el("div", { className: "mut" }, nx ? `Next up: ${nx.label} at ${nx.window.next_t}` : "Classes are finished for today.")));
+        el("div", { className: "mut" }, !pub.ab ? "There's no school today. See you next class day!" : nx ? `Next up: ${nx.label} at ${nx.window.next_t}` : "Classes are finished for today.")));
     }
     const c = now[0];
     S.login = { cls: c, names: null };
